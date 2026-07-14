@@ -1,0 +1,95 @@
+using System;
+using System.Net.Sockets;
+using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
+
+class Program
+{
+    private const string DbPath = "Data Source=scan_results.db";
+
+    static async Task Main(string[] args)
+    {
+        Console.WriteLine("=== C# Port-, Firewall- & DB-Scanner ===");
+        
+        InitDatabase();
+
+        string targetIp = "127.0.0.1";
+        int[] portsToScan = { 21, 22, 80, 443, 3306, 8080 };
+
+        Console.WriteLine($"Starte Scan für {targetIp}...\n");
+
+        foreach (int port in portsToScan)
+        {
+            string status = await ScanPortAndDetectFirewall(targetIp, port);
+            Console.WriteLine($" Port {port}: {status}");
+            
+            SaveResultToDb(targetIp, port, status);
+        }
+
+        Console.WriteLine("\n✅ Scan abgeschlossen! Ergebnisse wurden in 'scan_results.db' gespeichert.");
+    }
+
+    static void InitDatabase()
+    {
+        using (var connection = new SqliteConnection(DbPath))
+        {
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE IF NOT EXISTS ScanResults (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    IP TEXT NOT NULL,
+                    Port INTEGER NOT NULL,
+                    Status TEXT NOT NULL,
+                    Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                );";
+            command.ExecuteNonQuery();
+        }
+    }
+
+    static async Task<string> ScanPortAndDetectFirewall(string ip, int port)
+    {
+        using (var client = new TcpClient())
+        {
+            var connectTask = client.ConnectAsync(ip, port);
+            var delayTask = Task.Delay(1000); 
+
+            var completedTask = await Task.WhenAny(connectTask, delayTask);
+
+            if (completedTask == connectTask)
+            {
+                try
+                {
+                    await connectTask;
+                    return "OFFEN (Keine Firewall blockiert)";
+                }
+                catch (SocketException ex)
+                {
+                    if (ex.SocketErrorCode == SocketError.ConnectionRefused)
+                    {
+                        return "GESCHLOSSEN (Direkte Antwort vom Host, keine blockierende Firewall)";
+                    }
+                    return $"FEHLER ({ex.Message})";
+                }
+            }
+            else
+            {
+                return "FILTERED (Vermutlich durch FIREWALL blockiert - Timeout)";
+            }
+        }
+    }
+
+    static void SaveResultToDb(string ip, int port, string status)
+    {
+        using (var connection = new SqliteConnection(DbPath))
+        {
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO ScanResults (IP, Port, Status) VALUES ($ip, $port, $status)";
+            command.Parameters.AddWithValue("$ip", ip);
+            command.Parameters.AddWithValue("$port", port);
+            command.Parameters.AddWithValue("$status", status);
+            command.ExecuteNonQuery();
+        }
+    }
+}
