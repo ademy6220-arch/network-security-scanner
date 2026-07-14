@@ -1,0 +1,15 @@
+#!/bin/bash
+# Ein einfaches,  Nmap-Skript zur Firewall-Erkennung
+
+if [ -z "$1" ]; then
+    echo "Nutzung: ./firewall_scans.sh <ziel-ip>"
+    exit 1
+fi
+
+TARGET=$1
+
+echo "=== Starte TCP-ACK-Scan (Firewall-Erkennung) auf $TARGET ==="
+nmap -sA -p 1-1000 $TARGET
+
+echo -e "\n=== Starte SYN-Scan mit OS-Erkennung auf $TARGET ==="
+nmap -sS -O -v $TARGET
