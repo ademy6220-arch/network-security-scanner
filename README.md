@@ -27,3 +27,8 @@ Ensure you have [Rust](https://rustup.rs/) installed.
 ```bash
 cd rust-scanner
 cargo run
+C# ScannerEnsure you have the .NET SDK installed.Bashcd csharp-scanner
+dotnet run
+Nmap ScansRun the firewall mapping commands (requires Nmap installed):Bashchmod +x nmap-scripts/firewall_scans.sh
+./nmap-scripts/firewall_scans.sh <target-ip>
+📊 Database Schema (SQLite)The C# scanner automatically creates and writes to a database with the following structure:ColumnTypeDescriptionIdINTEGERPrimary Key (Auto-Increment)IPTEXTScanned Target IPPortINTEGERScanned PortStatusTEXTOpen / Closed / Filtered (Firewall)TimestampDATETIMETime of the scanDisclaimer: This tool is intended for educational and authorized security testing purposes only.
