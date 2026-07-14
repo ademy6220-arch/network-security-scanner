@@ -1,0 +1,117 @@
+```rust
+use std::path::Path;
+use std::time::Duration;
+use tokio::net::TcpStream;
+use walkdir::WalkDir;
+use reqwest::Proxy;
+
+// ==========================================
+// 1. BACKUP SCANNER (Lokales Verzeichnis)
+// ==========================================
+fn scan_for_backups(dir_path: &str) {
+    println!("\n🔍 [1/3] Starte Backup-Scan im Verzeichnis: {}", dir_path);
+    
+    let backup_extensions = vec!["bak", "backup", "sql", "zip", "tar.gz", "tgz", "old"];
+    let mut found_count = 0;
+
+    for entry in WalkDir::new(dir_path).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if backup_extensions.contains(&ext.to_lowercase().as_str()) {
+                    println!("   📂 Backup gefunden: {:?}", path);
+                    found_count += 1;
+                }
+            }
+        }
+    }
+    println!("   ✅ Scan abgeschlossen. {} Backups gefunden.", found_count);
+}
+
+// ==========================================
+// 2. IP & PORT SCANNER (Asynchron & Schnell)
+// ==========================================
+async fn scan_ip(ip: &str, port: u16) -> bool {
+    let address = format!("{}:{}", ip, port);
+    let timeout = Duration::from_millis(800);
+
+    match tokio::time::timeout(timeout, TcpStream::connect(&address)).await {
+        Ok(Ok(_)) => {
+            println!("   🟢 Port {} ist OFFEN auf IP: {}", port, ip);
+            true
+        }
+        _ => false,
+    }
+}
+
+// ==========================================
+// 3. PROXY CHECKER
+// ==========================================
+async fn check_proxy(proxy_url: &str) -> bool {
+    println!("\n🔍 [3/3] Teste Proxy: {}", proxy_url);
+    
+    let proxy = match Proxy::all(proxy_url) {
+        Ok(p) => p,
+        Err(_) => {
+            println!("   🔴 Ungültiges Proxy-Format!");
+            return false;
+        }
+    };
+
+    let client = reqwest::Client::builder()
+        .proxy(proxy)
+        .timeout(Duration::from_secs(5))
+        .build();
+
+    let client = match client {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    match client.get("https://api.ipify.org").send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                if let Ok(ip) = response.text().await {
+                    println!("   🟢 Proxy ist LIVE! Deine externe IP via Proxy: {}", ip.trim());
+                    return true;
+                }
+            }
+            false
+        }
+        Err(e) => {
+            println!("   🔴 Proxy ist tot oder reagiert nicht. Fehler: {}", e);
+            false
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    println!("--- MULTI-SCANNER INITIALISIERT ---");
+
+    scan_for_backups(".");
+
+    println!("\n🔍 [2/3] Starte asynchronen IP-Scan...");
+    let targets = vec![
+        "8.8.8.8",
+        "1.1.1.1",
+        "127.0.0.1",
+        "192.168.1.1",
+    ];
+    let target_port = 80;
+
+    let mut tasks = vec![];
+    for ip in targets {
+        tasks.push(tokio::spawn(async move {
+            scan_ip(ip, target_port).await;
+        }));
+    }
+    for task in tasks {
+        let _ = task.await;
+    }
+
+    let test_proxy = "http://127.0.0.1:8080";
+    check_proxy(test_proxy).await;
+
+    println!("\n--- ALLE SCANS BEENDET ---");
+}
