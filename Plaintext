@@ -1,0 +1,3 @@
+git add .gitattributes
+git commit -m "chore: add gitattributes to fix language statistics"
+git push origin main
